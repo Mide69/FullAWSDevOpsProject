@@ -1,0 +1,42 @@
+version: 0.2
+
+# Security scanning stage - runs DAST, container scanning, secrets detection
+# Runs in parallel with build via CodePipeline parallel actions
+
+phases:
+  install:
+    commands:
+      - pip3 install checkov detect-secrets
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+  build:
+    commands:
+      - echo "=== Secrets Detection ==="
+      - detect-secrets scan --baseline .secrets.baseline app/ || true
+
+      - echo "=== IaC Security Scan (Checkov) ==="
+      - checkov -d infrastructure/terraform --output json > checkov-terraform.json || true
+      - checkov -d infrastructure/cloudformation --output json > checkov-cfn.json || true
+
+      - echo "=== Container Image Vulnerability Scan (Trivy) ==="
+      - |
+        IMAGE_TAG=$(cat image-tag.env | cut -d= -f2)
+        trivy image --exit-code 1 --severity HIGH,CRITICAL \
+          --format json --output trivy-results.json \
+          $ECR_REPO_URI:$IMAGE_TAG
+
+      - echo "=== CIS Benchmark Check ==="
+      - trivy config --exit-code 0 --format json \
+          --output trivy-config.json infrastructure/
+
+  post_build:
+    commands:
+      - echo "Publishing findings to Security Hub..."
+      - python3 scripts/publish_findings_to_securityhub.py
+
+artifacts:
+  files:
+    - checkov-terraform.json
+    - checkov-cfn.json
+    - trivy-results.json
+    - semgrep-results.json

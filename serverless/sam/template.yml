@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for DevOps Lambda functions (hooks, automation)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        ENV: !Ref Environment
+        LOG_LEVEL: INFO
+    Layers:
+      - !Ref CommonLayer
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+  ALBArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /devops/dev/alb-arn-suffix
+
+Resources:
+
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: devops-common
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - python3.12
+
+  PreDeployHook:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "devops-pre-deploy-hook-${Environment}"
+      CodeUri: lambda/pre-deploy-hook/
+      Handler: index.handler
+      Description: "CodeDeploy BeforeInstall hook - validates pre-deployment health"
+      Environment:
+        Variables:
+          ALB_ARN_SUFFIX: !Ref ALBArn
+      Policies:
+        - CloudWatchReadOnlyAccess
+        - Statement:
+            - Effect: Allow
+              Action: codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameters
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/devops/*"
+
+  SmokeTestHook:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "devops-smoke-test-hook-${Environment}"
+      CodeUri: lambda/smoke-test-hook/
+      Handler: index.handler
+      Description: "CodeDeploy AfterInstall hook - runs smoke tests against new container"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource: "*"
+
+  SecurityFindingsProcessor:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "devops-security-findings-${Environment}"
+      CodeUri: lambda/security-findings/
+      Handler: index.handler
+      Description: "Processes Security Hub findings and creates Jira tickets"
+      Events:
+        SecurityHubFindings:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.securityhub
+              detail-type:
+                - Security Hub Findings - Imported
+              detail:
+                findings:
+                  Severity:
+                    Label:
+                      - HIGH
+                      - CRITICAL
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - securityhub:GetFindings
+                - securityhub:UpdateFindings
+              Resource: "*"
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:devops/jira*"
+
+  CostAnomalyHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "devops-cost-anomaly-${Environment}"
+      CodeUri: lambda/cost-anomaly/
+      Handler: index.handler
+      Description: "Handles AWS Cost Anomaly Detection alerts"
+      Events:
+        CostAnomaly:
+          Type: SNS
+          Properties:
+            Topic: !Ref CostAnomalySNS
+
+  CostAnomalySNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "cost-anomaly-${Environment}"
+
+Outputs:
+  PreDeployHookArn:
+    Value: !GetAtt PreDeployHook.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PreDeployHookArn"
+  SmokeTestHookArn:
+    Value: !GetAtt SmokeTestHook.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SmokeTestHookArn"

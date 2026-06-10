@@ -1,0 +1,66 @@
+{
+  "Comment": "Permission Boundary - prevents privilege escalation. Attach to all developer-created roles.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCoreDevOpsServices",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "ecs:*",
+        "ecr:*",
+        "logs:*",
+        "cloudwatch:*",
+        "xray:*",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "secretsmanager:GetSecretValue",
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyPrivilegeEscalation",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:CreateUser",
+        "iam:AttachUserPolicy",
+        "iam:CreateAccessKey",
+        "iam:UpdateAssumeRolePolicy",
+        "organizations:*",
+        "account:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyProductionDestructive",
+      "Effect": "Deny",
+      "Action": [
+        "ec2:TerminateInstances",
+        "rds:DeleteDBInstance",
+        "dynamodb:DeleteTable",
+        "s3:DeleteBucket"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Environment": "prod"
+        }
+      }
+    }
+  ]
+}

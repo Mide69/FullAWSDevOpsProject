@@ -1,0 +1,80 @@
+{
+  "Comment": "ECS Task Execution Role with Permission Boundary - least privilege",
+  "TrustPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:ecs:eu-west-2:ACCOUNT_ID:*"
+        },
+        "StringEquals": {
+          "aws:SourceAccount": "ACCOUNT_ID"
+        }
+      }
+    }]
+  },
+  "PermissionBoundary": "arn:aws:iam::ACCOUNT_ID:policy/DevOpsPermissionBoundary",
+  "Policies": [
+    {
+      "PolicyName": "ECSTaskExecutionPolicy",
+      "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "ECRAccess",
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken",
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Sid": "CloudWatchLogs",
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:eu-west-2:ACCOUNT_ID:log-group:/ecs/*:*"
+          },
+          {
+            "Sid": "SecretsManagerAccess",
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": "arn:aws:secretsmanager:eu-west-2:ACCOUNT_ID:secret:devops/*"
+          },
+          {
+            "Sid": "SSMParameterAccess",
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters"
+            ],
+            "Resource": "arn:aws:ssm:eu-west-2:ACCOUNT_ID:parameter/devops/*"
+          },
+          {
+            "Sid": "KMSDecrypt",
+            "Effect": "Allow",
+            "Action": [
+              "kms:Decrypt"
+            ],
+            "Resource": "arn:aws:kms:eu-west-2:ACCOUNT_ID:key/*",
+            "Condition": {
+              "StringEquals": {
+                "kms:ViaService": "secretsmanager.eu-west-2.amazonaws.com"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

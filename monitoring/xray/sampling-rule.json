@@ -1,0 +1,29 @@
+{
+  "SamplingRule": {
+    "RuleName": "full-aws-devops-app",
+    "ResourceARN": "*",
+    "Priority": 1,
+    "FixedRate": 0.05,
+    "ReservoirSize": 5,
+    "ServiceName": "full-aws-devops-app",
+    "ServiceType": "AWS::ECS::Container",
+    "Host": "*",
+    "HTTPMethod": "*",
+    "URLPath": "*",
+    "Version": 1,
+    "Attributes": {}
+  },
+  "HighPrioritySamplingRule": {
+    "RuleName": "full-aws-devops-app-errors",
+    "ResourceARN": "*",
+    "Priority": 0,
+    "FixedRate": 1.0,
+    "ReservoirSize": 100,
+    "ServiceName": "full-aws-devops-app",
+    "ServiceType": "AWS::ECS::Container",
+    "Host": "*",
+    "HTTPMethod": "*",
+    "URLPath": "/api/critical/*",
+    "Version": 1
+  }
+}

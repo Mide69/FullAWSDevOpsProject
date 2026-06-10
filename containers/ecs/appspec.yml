@@ -1,0 +1,25 @@
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: <TASK_DEFINITION>
+        LoadBalancerInfo:
+          ContainerName: app
+          ContainerPort: 3000
+        PlatformVersion: LATEST
+        NetworkConfiguration:
+          AwsvpcConfiguration:
+            Subnets:
+              - "{{resolve:ssm:/devops/dev/subnet-a}}"
+              - "{{resolve:ssm:/devops/dev/subnet-b}}"
+            SecurityGroups:
+              - "{{resolve:ssm:/devops/dev/app-sg}}"
+            AssignPublicIp: DISABLED
+
+Hooks:
+  - BeforeInstall: "arn:aws:lambda:eu-west-2:ACCOUNT_ID:function:devops-pre-deploy-hook"
+  - AfterInstall: "arn:aws:lambda:eu-west-2:ACCOUNT_ID:function:devops-smoke-test-hook"
+  - AfterAllowTestTraffic: "arn:aws:lambda:eu-west-2:ACCOUNT_ID:function:devops-integration-test-hook"
+  - BeforeAllowTraffic: "arn:aws:lambda:eu-west-2:ACCOUNT_ID:function:devops-final-check-hook"
+  - AfterAllowTraffic: "arn:aws:lambda:eu-west-2:ACCOUNT_ID:function:devops-post-deploy-hook"

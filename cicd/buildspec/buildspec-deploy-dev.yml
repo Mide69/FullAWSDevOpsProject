@@ -1,0 +1,44 @@
+version: 0.2
+
+# Deploy to Dev environment - ECS Blue/Green via CodeDeploy
+
+phases:
+  install:
+    commands:
+      - pip3 install boto3
+
+  pre_build:
+    commands:
+      - echo "Verifying image exists in ECR..."
+      - IMAGE_TAG=$(cat image-tag.env | cut -d= -f2)
+      - aws ecr describe-images --repository-name $ECR_REPO_NAME --image-ids imageTag=$IMAGE_TAG
+
+  build:
+    commands:
+      - echo "Updating ECS task definition with new image..."
+      - |
+        TASK_DEF=$(aws ecs describe-task-definition \
+          --task-definition $TASK_DEF_FAMILY \
+          --query 'taskDefinition' --output json)
+        NEW_TASK_DEF=$(echo $TASK_DEF | jq \
+          --arg IMAGE "$ECR_REPO_URI:$IMAGE_TAG" \
+          '.containerDefinitions[0].image = $IMAGE |
+           del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)')
+        NEW_TASK_ARN=$(aws ecs register-task-definition \
+          --cli-input-json "$NEW_TASK_DEF" \
+          --query 'taskDefinition.taskDefinitionArn' --output text)
+        echo "New task def: $NEW_TASK_ARN"
+        echo $NEW_TASK_ARN > new-task-def-arn.txt
+
+      - echo "Triggering CodeDeploy Blue/Green deployment..."
+      - python3 scripts/trigger_codedeploy.py
+
+  post_build:
+    commands:
+      - echo "Running smoke tests against dev..."
+      - sleep 60
+      - python3 tests/integration/smoke_test.py $DEV_ALB_URL
+
+artifacts:
+  files:
+    - new-task-def-arn.txt

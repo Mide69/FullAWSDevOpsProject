@@ -1,0 +1,74 @@
+version: 0.2
+
+# CodeBuild buildspec - Build & Unit Test phase
+# Triggered by CodePipeline Source stage (CodeCommit push to main)
+
+env:
+  variables:
+    NODE_ENV: "test"
+  parameter-store:
+    SONAR_TOKEN: "/devops/sonar/token"
+  secrets-manager:
+    NPM_TOKEN: "devops/npm:token"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "Installing dependencies..."
+      - cd app && npm ci
+
+  pre_build:
+    commands:
+      - echo "Running linting..."
+      - cd app && npm run lint
+      - echo "Running SAST with Semgrep..."
+      - pip3 install semgrep
+      - semgrep --config=auto app/src/ --json > semgrep-results.json || true
+      - echo "Dependency vulnerability scan..."
+      - cd app && npm audit --audit-level=high
+
+  build:
+    commands:
+      - echo "Running unit tests..."
+      - cd app && npm test
+      - echo "Building Docker image..."
+      - |
+        IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
+        docker build -t $ECR_REPO_URI:$IMAGE_TAG -t $ECR_REPO_URI:latest .
+      - echo "Logging in to ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | \
+          docker login --username AWS --password-stdin $ECR_REPO_URI
+      - docker push $ECR_REPO_URI:$IMAGE_TAG
+      - docker push $ECR_REPO_URI:latest
+      - echo "IMAGE_TAG=$IMAGE_TAG" >> image-tag.env
+
+  post_build:
+    commands:
+      - echo "Writing image definition for CodeDeploy..."
+      - |
+        printf '[{"name":"app","imageUri":"%s:%s"}]' \
+          $ECR_REPO_URI $IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - image-tag.env
+    - appspec.yml
+    - taskdef.json
+  discard-paths: no
+
+reports:
+  unit-test-report:
+    files:
+      - app/coverage/junit.xml
+    file-format: JUNITXML
+  coverage-report:
+    files:
+      - app/coverage/lcov.info
+    file-format: CLOVERXML
+
+cache:
+  paths:
+    - app/node_modules/**/*
