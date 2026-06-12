@@ -30,13 +30,26 @@ resource "aws_subnet" "private" {
   tags = { Name = "${var.environment}-private-${count.index + 1}", Tier = "Private" }
 }
 
+resource "aws_subnet" "data" {
+  count             = length(var.data_subnet_cidrs)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.data_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+
+  tags = { Name = "${var.environment}-data-${count.index + 1}", Tier = "Data" }
+}
+
+locals {
+  nat_count = var.single_nat_gateway ? 1 : length(var.public_subnet_cidrs)
+}
+
 resource "aws_eip" "nat" {
-  count  = length(var.public_subnet_cidrs)
+  count  = local.nat_count
   domain = "vpc"
 }
 
 resource "aws_nat_gateway" "main" {
-  count         = length(var.public_subnet_cidrs)
+  count         = local.nat_count
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
 
@@ -57,7 +70,7 @@ resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = aws_nat_gateway.main[var.single_nat_gateway ? 0 : count.index].id
   }
   tags = { Name = "${var.environment}-private-rt-${count.index + 1}" }
 }
@@ -72,6 +85,20 @@ resource "aws_route_table_association" "private" {
   count          = length(var.private_subnet_cidrs)
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[count.index].id
+}
+
+# Data subnets get a route table with NO internet route at all —
+# the database tier can only talk inside the VPC. This is enforced
+# by routing, not just security groups.
+resource "aws_route_table" "data" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "${var.environment}-data-rt" }
+}
+
+resource "aws_route_table_association" "data" {
+  count          = length(var.data_subnet_cidrs)
+  subnet_id      = aws_subnet.data[count.index].id
+  route_table_id = aws_route_table.data.id
 }
 
 # VPC Flow Logs
@@ -90,24 +117,30 @@ resource "aws_cloudwatch_log_group" "flow_log" {
 resource "aws_iam_role" "flow_log" {
   name = "${var.environment}-vpc-flow-log-role"
   assume_role_policy = jsonencode({
+    Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Principal = { Service = "vpc-flow-logs.amazonaws.com" }
       Action    = "sts:AssumeRole"
     }]
   })
-  inline_policy {
-    name = "FlowLogPolicy"
-    policy = jsonencode({
-      Statement = [{
-        Effect = "Allow"
-        Action = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogGroups"]
-        Resource = "*"
-      }]
-    })
-  }
+}
+
+resource "aws_iam_role_policy" "flow_log" {
+  name = "FlowLogPolicy"
+  role = aws_iam_role.flow_log.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogGroups"]
+      Resource = "*"
+    }]
+  })
 }
 
 output "vpc_id"             { value = aws_vpc.main.id }
+output "vpc_cidr"           { value = aws_vpc.main.cidr_block }
 output "public_subnet_ids"  { value = aws_subnet.public[*].id }
 output "private_subnet_ids" { value = aws_subnet.private[*].id }
+output "data_subnet_ids"    { value = aws_subnet.data[*].id }
