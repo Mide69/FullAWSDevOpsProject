@@ -29,6 +29,12 @@ variable "single_nat_gateway" {
   default     = false
 }
 
+variable "interface_endpoints" {
+  description = "Interface endpoint services to create (~£7/mo each), e.g. [\"ecr.api\", \"ecr.dkr\", \"secretsmanager\", \"logs\", \"sts\"]. Empty = none (traffic uses NAT)."
+  type        = list(string)
+  default     = []
+}
+
 variable "data_subnet_cidrs" {
   description = "CIDR blocks for data subnets (RDS tier), one per AZ"
   type        = list(string)

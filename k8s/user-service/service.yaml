@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  type: ClusterIP                  # internal-only address inside the cluster
+  selector:
+    app: user-service              # routes to pods carrying this label
+  ports:
+    - port: 80                     # the Service listens on 80
+      targetPort: 3000             # forwards to the container's 3000
+      protocol: TCP

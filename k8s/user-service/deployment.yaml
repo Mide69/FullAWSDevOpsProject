@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  labels:
+    app: user-service
+spec:
+  replicas: 2                      # two pods → survives one node/pod dying
+  selector:
+    matchLabels:
+      app: user-service            # this Deployment owns pods with this label
+  template:
+    metadata:
+      labels:
+        app: user-service          # pods are stamped with it
+    spec:
+      containers:
+        - name: user-service
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/user-service:7b8d60c
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:              # what the pod is guaranteed (used for scheduling)
+              cpu: 50m
+              memory: 64Mi
+            limits:                # hard ceiling — exceed memory and it's killed
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:           # "is it alive?" — fail → restart the pod
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:          # "ready for traffic?" — fail → remove from Service
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
