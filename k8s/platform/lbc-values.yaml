@@ -3,8 +3,10 @@
 #            -n kube-system -f k8s/platform/lbc-values.yaml
 clusterName: dev-govplatform
 region: eu-west-2
-# vpcId intentionally omitted — the controller auto-discovers it from the
-# node, so this survives a destroy/rebuild where the VPC ID changes.
+# vpcId MUST be passed explicitly — auto-discovery via EC2 IMDS fails because
+# EKS pods can't reach instance metadata (hop-limit restriction). Pass it at
+# install time from Terraform output:
+#   helm install ... --set vpcId=$(terraform -chdir=... output -raw vpc_id)
 
 serviceAccount:
   create: true
