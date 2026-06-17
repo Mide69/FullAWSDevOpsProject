@@ -18,7 +18,11 @@ resource "aws_subnet" "public" {
   availability_zone = var.availability_zones[count.index]
   map_public_ip_on_launch = false
 
-  tags = { Name = "${var.environment}-public-${count.index + 1}", Tier = "Public" }
+  tags = {
+    Name                     = "${var.environment}-public-${count.index + 1}"
+    Tier                     = "Public"
+    "kubernetes.io/role/elb" = "1" # AWS LB Controller discovers these for internet-facing ALBs
+  }
 }
 
 resource "aws_subnet" "private" {
@@ -27,7 +31,11 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
 
-  tags = { Name = "${var.environment}-private-${count.index + 1}", Tier = "Private" }
+  tags = {
+    Name                              = "${var.environment}-private-${count.index + 1}"
+    Tier                              = "Private"
+    "kubernetes.io/role/internal-elb" = "1" # for internal load balancers
+  }
 }
 
 resource "aws_subnet" "data" {

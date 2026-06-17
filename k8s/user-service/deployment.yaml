@@ -17,7 +17,7 @@ spec:
       serviceAccountName: user-service   # → IRSA role for reading the DB secret
       containers:
         - name: user-service
-          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/user-service:ba596cf
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/user-service:IMAGE_TAG
           ports:
             - containerPort: 3000
           envFrom:

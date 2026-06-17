@@ -1,0 +1,37 @@
+# One shared ALB for all public services (Ingress group), protected by WAF.
+# case-service is deliberately absent — it has no public route.
+# WAF_ACL_ARN is injected from Terraform output by the deploy script.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: govplatform
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/group.name: govplatform
+    alb.ingress.kubernetes.io/wafv2-acl-arn: WAF_ACL_ARN
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port: { number: 80 }
+          - path: /claims
+            pathType: Prefix
+            backend:
+              service:
+                name: claim-service
+                port: { number: 80 }
+          - path: /documents
+            pathType: Prefix
+            backend:
+              service:
+                name: document-service
+                port: { number: 80 }

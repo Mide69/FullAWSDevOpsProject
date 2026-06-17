@@ -1,0 +1,55 @@
+# case-service is INTERNAL-ONLY: a ClusterIP Service and no Ingress, so it can
+# never be reached from the internet — only by other pods in the cluster.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: case-service
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::445358171352:role/dev-case-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: case-service
+  labels: { app: case-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: case-service }
+  template:
+    metadata:
+      labels: { app: case-service }
+    spec:
+      serviceAccountName: case-service
+      containers:
+        - name: case-service
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/case-service:IMAGE_TAG
+          ports: [{ containerPort: 3000 }]
+          envFrom:
+            - configMapRef: { name: db-config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: case-service
+spec:
+  type: ClusterIP            # internal DNS only: case-service.default.svc.cluster.local
+  selector: { app: case-service }
+  ports: [{ port: 80, targetPort: 3000 }]

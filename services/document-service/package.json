@@ -1,0 +1,12 @@
+{
+  "name": "document-service",
+  "version": "1.0.0",
+  "description": "GovPlatform document upload service (S3 pre-signed URLs)",
+  "main": "src/index.js",
+  "scripts": { "start": "node src/index.js" },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/s3-request-presigner": "^3.600.0",
+    "express": "^4.18.2"
+  }
+}

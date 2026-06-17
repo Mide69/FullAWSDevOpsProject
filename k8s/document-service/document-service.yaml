@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: document-service
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::445358171352:role/dev-document-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-service
+  labels: { app: document-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: document-service }
+  template:
+    metadata:
+      labels: { app: document-service }
+    spec:
+      serviceAccountName: document-service
+      containers:
+        - name: document-service
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/document-service:IMAGE_TAG
+          ports: [{ containerPort: 3000 }]
+          envFrom:
+            - configMapRef: { name: document-config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: document-service
+spec:
+  type: ClusterIP
+  selector: { app: document-service }
+  ports: [{ port: 80, targetPort: 3000 }]

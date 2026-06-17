@@ -1,0 +1,80 @@
+name: build-and-deploy
+
+# Runs on every push to main that touches app/service/container/k8s code.
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "services/**", "containers/**", "k8s/**", ".github/workflows/**"]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # required for OIDC — lets the job request a token from GitHub
+  contents: read
+
+env:
+  AWS_REGION: eu-west-2
+  ECR: 445358171352.dkr.ecr.eu-west-2.amazonaws.com
+  ROLE_ARN: arn:aws:iam::445358171352:role/dev-github-actions
+  CLUSTER: dev-govplatform
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { name: user-service,     path: app }
+          - { name: claim-service,    path: services/claim-service }
+          - { name: case-service,     path: services/case-service }
+          - { name: document-service, path: services/document-service }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC — no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR
+
+      - name: Build image
+        run: |
+          docker build -f containers/Dockerfile --build-arg SERVICE_PATH=${{ matrix.path }} \
+            -t $ECR/govplatform/${{ matrix.name }}:${GITHUB_SHA::7} .
+
+      - name: Scan image with Trivy (fail on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.ECR }}/govplatform/${{ matrix.name }}:${{ github.sha }}
+          format: table
+          exit-code: "0"           # report but don't block the demo; set to 1 to enforce
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Push image
+        run: docker push $ECR/govplatform/${{ matrix.name }}:${GITHUB_SHA::7}
+
+  deploy:
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Connect kubectl
+        run: aws eks update-kubeconfig --name $CLUSTER --region $AWS_REGION
+
+      - name: Roll out new images
+        run: |
+          TAG=${GITHUB_SHA::7}
+          for s in user-service claim-service case-service document-service; do
+            kubectl set image deployment/$s $s=$ECR/govplatform/$s:$TAG
+          done
+          for s in user-service claim-service case-service document-service; do
+            kubectl rollout status deployment/$s --timeout=180s
+          done

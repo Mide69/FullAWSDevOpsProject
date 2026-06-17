@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claim-service
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::445358171352:role/dev-claim-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claim-service
+  labels: { app: claim-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: claim-service }
+  template:
+    metadata:
+      labels: { app: claim-service }
+    spec:
+      serviceAccountName: claim-service
+      containers:
+        - name: claim-service
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/claim-service:IMAGE_TAG
+          ports: [{ containerPort: 3000 }]
+          envFrom:
+            - configMapRef: { name: db-config }
+            - configMapRef: { name: claim-config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claim-service
+spec:
+  type: ClusterIP
+  selector: { app: claim-service }
+  ports: [{ port: 80, targetPort: 3000 }]
