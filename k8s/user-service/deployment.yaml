@@ -14,11 +14,15 @@ spec:
       labels:
         app: user-service          # pods are stamped with it
     spec:
+      serviceAccountName: user-service   # → IRSA role for reading the DB secret
       containers:
         - name: user-service
-          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/user-service:7b8d60c
+          image: 445358171352.dkr.ecr.eu-west-2.amazonaws.com/govplatform/user-service:ba596cf
           ports:
             - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: db-config          # DB_HOST/DB_NAME/DB_SECRET_ARN/DB_PORT (from TF outputs)
           resources:
             requests:              # what the pod is guaranteed (used for scheduling)
               cpu: 50m

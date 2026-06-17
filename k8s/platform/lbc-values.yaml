@@ -1,0 +1,15 @@
+# Helm values for aws-load-balancer-controller (chart: eks/aws-load-balancer-controller)
+# Install: helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+#            -n kube-system -f k8s/platform/lbc-values.yaml
+clusterName: dev-govplatform
+region: eu-west-2
+# vpcId intentionally omitted — the controller auto-discovers it from the
+# node, so this survives a destroy/rebuild where the VPC ID changes.
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    # Binds this ServiceAccount to the IRSA role created in Terraform.
+    # This annotation is the other half of the IRSA handshake.
+    eks.amazonaws.com/role-arn: arn:aws:iam::445358171352:role/dev-aws-lbc-role
